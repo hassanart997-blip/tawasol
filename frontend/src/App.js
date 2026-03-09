@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import axios from 'axios';
-import { io } from 'socket.io-client';
 import Login from './components/Login';
 import Register from './components/Register';
 import Feed from './components/Feed';
@@ -10,9 +9,11 @@ import Chat from './components/Chat';
 import Friends from './components/Friends';
 import './App.css';
 
+const API_URL = process.env.REACT_APP_API_URL || 'https://tawasol-eta.vercel.app';
+
 const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || 'https://tawasol-eta.vercel.app',
-    withCredentials: true
+    baseURL: API_URL + '/api',
+    withCredentials: false
 });
 
 api.interceptors.request.use((config) => {
@@ -26,15 +27,13 @@ api.interceptors.request.use((config) => {
 function App() {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [socket, setSocket] = useState(null);
 
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            api.get('/api/profile')
+            api.get('/profile')
                 .then(response => {
                     setUser(response.data);
-                    connectSocket(response.data, token);
                 })
                 .catch(() => {
                     localStorage.removeItem('token');
@@ -45,26 +44,12 @@ function App() {
         }
     }, []);
 
-    const connectSocket = (user, token) => {
-        const socketUrl = process.env.REACT_APP_SOCKET_URL || 'https://tawasol-eta.vercel.app';
-        const newSocket = io(socketUrl, { auth: { token } });
-        newSocket.on('connect', () => console.log('متصل بالخادم'));
-        newSocket.on('new_message', (message) => {
-            window.dispatchEvent(new CustomEvent('new_message', { detail: message }));
-        });
-        newSocket.on('user_typing', (data) => {
-            window.dispatchEvent(new CustomEvent('user_typing', { detail: data }));
-        });
-        setSocket(newSocket);
-    };
-
     const handleLogin = async (email, password) => {
         try {
-            const response = await api.post('/api/login', { email, password });
+            const response = await api.post('/login', { email, password });
             const { token, user } = response.data;
             localStorage.setItem('token', token);
             setUser(user);
-            connectSocket(user, token);
             return { success: true };
         } catch (error) {
             return {
@@ -76,7 +61,6 @@ function App() {
 
     const handleLogout = () => {
         localStorage.removeItem('token');
-        if (socket) socket.disconnect();
         setUser(null);
     };
 
@@ -99,10 +83,10 @@ function App() {
                         </nav>
                         <Routes>
                             <Route path="/feed" element={<Feed api={api} user={user} />} />
-                            <Route path="/profile/:userId" element={<Profile api={api} user={user} socket={socket} />} />
+                            <Route path="/profile/:userId" element={<Profile api={api} user={user} />} />
                             <Route path="/friends" element={<Friends api={api} user={user} />} />
-                            <Route path="/chat" element={<Chat api={api} user={user} socket={socket} />} />
-                            <Route path="/chat/:conversationId" element={<Chat api={api} user={user} socket={socket} />} />
+                            <Route path="/chat" element={<Chat api={api} user={user} />} />
+                            <Route path="/chat/:conversationId" element={<Chat api={api} user={user} />} />
                             <Route path="/" element={<Navigate to="/feed" />} />
                         </Routes>
                     </>
