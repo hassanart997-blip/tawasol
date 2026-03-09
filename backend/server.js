@@ -39,7 +39,6 @@ const auth = (req, res, next) => {
   }
 };
 
-// تهيئة قاعدة البيانات
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -97,7 +96,6 @@ async function initDB() {
   `);
 }
 
-// تسجيل
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password, full_name } = req.body;
@@ -113,7 +111,6 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// دخول
 app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -128,7 +125,6 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// المنشورات
 app.get('/api/posts', auth, async (req, res) => {
   const result = await pool.query(`
     SELECT p.*, u.username, u.full_name, u.profile_picture,
@@ -149,7 +145,6 @@ app.post('/api/posts', auth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// إعجاب
 app.post('/api/posts/:id/like', auth, async (req, res) => {
   const existing = await pool.query('SELECT * FROM likes WHERE user_id=$1 AND post_id=$2', [req.user.id, req.params.id]);
   if (existing.rows[0]) {
@@ -160,7 +155,6 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
   res.json({ success: true });
 });
 
-// تعليقات
 app.get('/api/posts/:id/comments', auth, async (req, res) => {
   const result = await pool.query(
     'SELECT c.*, u.username FROM comments c JOIN users u ON c.user_id=u.id WHERE c.post_id=$1',
@@ -177,7 +171,6 @@ app.post('/api/posts/:id/comments', auth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// الأصدقاء
 app.get('/api/friends', auth, async (req, res) => {
   const result = await pool.query(
     `SELECT u.* FROM users u JOIN friendships f ON 
@@ -196,7 +189,6 @@ app.post('/api/friends/request', auth, async (req, res) => {
   res.json({ success: true });
 });
 
-// المستخدمون
 app.get('/api/users', auth, async (req, res) => {
   const result = await pool.query('SELECT id, username, full_name, profile_picture FROM users WHERE id!=$1', [req.user.id]);
   res.json(result.rows);
@@ -207,7 +199,6 @@ app.get('/api/profile', auth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// الرسائل
 app.get('/api/messages/:userId', auth, async (req, res) => {
   const result = await pool.query(
     `SELECT m.*, u.username as sender_name FROM messages m 
@@ -228,13 +219,15 @@ app.post('/api/messages', auth, async (req, res) => {
   res.json(result.rows[0]);
 });
 
-// الإشعارات
 app.get('/api/notifications', auth, async (req, res) => {
   const result = await pool.query('SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
   res.json(result.rows);
 });
 
-const PORT = process.env.PORT || 3001;
-initDB().then(() => {
-  server.listen(PORT, () => console.log('Server running on port ' + PORT));
+app.get('/', (req, res) => {
+  res.json({ message: 'تواصل API يعمل!' });
 });
+
+initDB().catch(console.error);
+
+module.exports = app;
