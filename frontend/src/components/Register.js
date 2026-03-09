@@ -21,7 +21,7 @@ function Register({ api }) {
         setError('');
 
         try {
-            const response = await api.post('/auth/register', formData);
+            const response = await api.post('/register', formData);
             localStorage.setItem('token', response.data.token);
             setSuccess('تم إنشاء الحساب بنجاح!');
             window.location.href = '/feed';
