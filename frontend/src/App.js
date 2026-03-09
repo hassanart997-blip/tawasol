@@ -11,7 +11,7 @@ import Friends from './components/Friends';
 import './App.css';
 
 const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api',
+    baseURL: process.env.REACT_APP_API_URL || 'https://tawasol-eta.vercel.app',
     withCredentials: true
 });
 
@@ -31,10 +31,10 @@ function App() {
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            api.get('/auth/verify')
+            api.get('/api/profile')
                 .then(response => {
-                    setUser(response.data.user);
-                    connectSocket(response.data.user, token);
+                    setUser(response.data);
+                    connectSocket(response.data, token);
                 })
                 .catch(() => {
                     localStorage.removeItem('token');
@@ -46,7 +46,7 @@ function App() {
     }, []);
 
     const connectSocket = (user, token) => {
-        const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
+        const socketUrl = process.env.REACT_APP_SOCKET_URL || 'https://tawasol-eta.vercel.app';
         const newSocket = io(socketUrl, { auth: { token } });
         newSocket.on('connect', () => console.log('متصل بالخادم'));
         newSocket.on('new_message', (message) => {
@@ -60,7 +60,7 @@ function App() {
 
     const handleLogin = async (email, password) => {
         try {
-            const response = await api.post('/auth/login', { email, password });
+            const response = await api.post('/api/login', { email, password });
             const { token, user } = response.data;
             localStorage.setItem('token', token);
             setUser(user);
