@@ -1,124 +1,72 @@
 import React, { useState, useEffect } from 'react';
 
-function Profile({ api, user, socket }) {
+function Profile({ api, user }) {
     const [profile, setProfile] = useState(null);
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [friendStatus, setFriendStatus] = useState(null);
 
     const userId = window.location.pathname.split('/').pop();
+    const firstLetter = (name) => name ? name.charAt(0).toUpperCase() : '؟';
 
     useEffect(() => {
         loadProfile();
-        loadUserPosts();
     }, [userId]);
 
     const loadProfile = async () => {
         try {
-            const response = await api.get(`/users/${userId}`);
-            setProfile(response.data.user);
-            setFriendStatus(response.data.friendStatus);
-        } catch (error) {
-            console.error('Error loading profile:', error);
+            const res = await api.get('/profile');
+            setProfile(res.data);
+            const postsRes = await api.get('/posts');
+            setPosts(postsRes.data.filter(p => p.user_id === parseInt(userId)));
+        } catch(e) {
+            console.error(e);
         } finally {
             setLoading(false);
         }
     };
 
-    const loadUserPosts = async () => {
-        try {
-            const response = await api.get(`/users/${userId}/posts`);
-            setPosts(response.data);
-        } catch (error) {
-            console.error('Error loading posts:', error);
-        }
-    };
-
-    const handleFriendAction = async () => {
-        try {
-            if (friendStatus === null) {
-                await api.post(`/friends/request/${userId}`);
-                setFriendStatus('pending');
-            } else if (friendStatus === 'accepted') {
-                await api.delete(`/friends/${userId}`);
-                setFriendStatus(null);
-            }
-        } catch (error) {
-            console.error('Error friend action:', error);
-        }
-    };
-
-    const getFriendButtonText = () => {
-        if (friendStatus === 'accepted') return '✓ صديق';
-        if (friendStatus === 'pending') return 'تم الإرسال';
-        return '+ إضافة صديق';
-    };
-
     if (loading) return <div className="loading">جاري التحميل...</div>;
-    if (!profile) return <div>المستخدم غير موجود</div>;
+    if (!profile) return <div style={{textAlign:'center',padding:'40px'}}>المستخدم غير موجود</div>;
 
     return (
         <div className="profile-container">
-            {/* غلاف الملف الشخصي */}
-            <div className="profile-cover">
-                <img
-                    src={profile.cover_photo || '/default-cover.png'}
-                    alt="غلاف"
-                    className="cover-photo"
-                />
-            </div>
+            <div className="cover-placeholder"></div>
 
-            {/* معلومات المستخدم */}
             <div className="profile-info">
-                <img
-                    src={profile.profile_picture || '/default-avatar.png'}
-                    alt={profile.full_name}
-                    className="profile-avatar"
-                />
+                <div className="profile-avatar">{firstLetter(profile.full_name)}</div>
                 <div className="profile-details">
-                    <h2>{profile.full_name}
-                        {profile.is_verified && <span className="verified">✓</span>}
-                    </h2>
-                    <span>@{profile.username}</span>
-                    {profile.bio && <p>{profile.bio}</p>}
+                    <h2>{profile.full_name}</h2>
+                    <p>@{profile.username}</p>
+                    {profile.bio && <p style={{marginTop:'5px',color:'#262626'}}>{profile.bio}</p>}
+                    <p style={{fontSize:'13px',color:'#8e8e8e',marginTop:'4px'}}>{profile.email}</p>
                 </div>
-
-                {parseInt(userId) !== user.id && (
-                    <div className="profile-actions">
-                        <button
-                            onClick={handleFriendAction}
-                            className={friendStatus === 'accepted' ? 'btn-friend' : 'btn-add'}
-                        >
-                            {getFriendButtonText()}
-                        </button>
-                        <a href={`/chat?user=${userId}`}>
-                            <button className="btn-message">💬 رسالة</button>
-                        </a>
-                    </div>
-                )}
             </div>
 
-            {/* منشورات المستخدم */}
-            <div className="profile-posts">
-                <h3>المنشورات</h3>
+            <div style={{padding:'20px',maxWidth:'700px',margin:'0 auto'}}>
+                <h3 style={{marginBottom:'15px',fontSize:'18px',fontWeight:'700'}}>
+                    المنشورات ({posts.length})
+                </h3>
                 {posts.length === 0 ? (
-                    <p>لا توجد منشورات بعد</p>
+                    <div style={{textAlign:'center',padding:'40px',color:'#8e8e8e'}}>
+                        <div style={{fontSize:'48px',marginBottom:'10px'}}>📝</div>
+                        <p>لا توجد منشورات بعد</p>
+                    </div>
                 ) : (
                     posts.map(post => (
-                        <div key={post.id} className="post-card">
-                            <div className="post-content">
+                        <div className="post-card" key={post.id}>
+                            <div className="post-header">
+                                <div className="post-avatar">{firstLetter(profile.full_name)}</div>
+                                <div className="post-author">
+                                    <strong>{profile.full_name}</strong>
+                                    <span>{new Date(post.created_at).toLocaleDateString('ar')}</span>
+                                </div>
+                            </div>
+                            <div className="post-body">
                                 <p>{post.content}</p>
-                                {post.media_url && (
-                                    post.type === 'image' ? (
-                                        <img src={post.media_url} alt="مرفق" />
-                                    ) : (
-                                        <video src={post.media_url} controls />
-                                    )
-                                )}
                             </div>
                             <div className="post-stats">
-                                <span>{post.likes_count} إعجاب</span>
-                                <span>{post.comments_count} تعليق</span>
+                                <span>❤️ {post.likes_count || 0}</span>
+                                <span>💬 {post.comments_count || 0}</span>
                             </div>
                         </div>
                     ))
