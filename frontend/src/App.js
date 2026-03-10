@@ -9,10 +9,8 @@ import Chat from './components/Chat';
 import Friends from './components/Friends';
 import './App.css';
 
-const API_URL = process.env.REACT_APP_API_URL || 'https://tawasol-eta.vercel.app';
-
 const api = axios.create({
-    baseURL: API_URL + '/api',
+    baseURL: 'https://tawasol-eta.vercel.app/api',
     withCredentials: false
 });
 
