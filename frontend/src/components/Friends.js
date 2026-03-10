@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 
 function Friends({ api, user }) {
     const [friends, setFriends] = useState([]);
-    const [requests, setRequests] = useState([]);
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    const firstLetter = (name) => name ? name.charAt(0).toUpperCase() : '؟';
+
     useEffect(() => {
         loadFriends();
-        loadRequests();
     }, []);
 
     const loadFriends = async () => {
@@ -17,16 +17,7 @@ function Friends({ api, user }) {
             const response = await api.get('/friends');
             setFriends(response.data);
         } catch (error) {
-            console.error('Error loading friends:', error);
-        }
-    };
-
-    const loadRequests = async () => {
-        try {
-            const response = await api.get('/friends/requests');
-            setRequests(response.data);
-        } catch (error) {
-            console.error('Error loading requests:', error);
+            console.error(error);
         }
     };
 
@@ -34,10 +25,12 @@ function Friends({ api, user }) {
         if (!search.trim()) return;
         setLoading(true);
         try {
-            const response = await api.get(`/users/search?q=${search}`);
-            setSearchResults(response.data);
+            const response = await api.get('/users');
+            setSearchResults(response.data.filter(u =>
+                u.full_name?.includes(search) || u.username?.includes(search)
+            ));
         } catch (error) {
-            console.error('Error searching:', error);
+            console.error(error);
         } finally {
             setLoading(false);
         }
@@ -45,117 +38,79 @@ function Friends({ api, user }) {
 
     const sendRequest = async (userId) => {
         try {
-            await api.post(`/friends/request/${userId}`);
+            await api.post('/friends/request', { friend_id: userId });
             setSearchResults(prev => prev.map(u =>
                 u.id === userId ? { ...u, request_sent: true } : u
             ));
         } catch (error) {
-            console.error('Error sending request:', error);
-        }
-    };
-
-    const acceptRequest = async (friendshipId) => {
-        try {
-            await api.post(`/friends/accept/${friendshipId}`);
-            loadFriends();
-            loadRequests();
-        } catch (error) {
-            console.error('Error accepting request:', error);
+            console.error(error);
         }
     };
 
     return (
         <div className="friends-container">
-            <h2>الأصدقاء</h2>
+            <h2 className="friends-header">👥 الأصدقاء</h2>
 
-            {/* البحث عن أصدقاء */}
-            <div className="search-section">
-                <h3>ابحث عن أصدقاء</h3>
-                <div className="search-bar">
-                    <input
-                        type="text"
-                        placeholder="ابحث باسم المستخدم..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                    />
-                    <button onClick={handleSearch} disabled={loading}>
-                        {loading ? '...' : 'بحث'}
-                    </button>
-                </div>
+            <div className="search-bar">
+                <input
+                    type="text"
+                    placeholder="ابحث عن أصدقاء..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <button onClick={handleSearch} disabled={loading}>
+                    {loading ? '...' : '🔍 بحث'}
+                </button>
+            </div>
 
-                <div className="search-results">
+            {searchResults.length > 0 && (
+                <div style={{marginBottom:'20px'}}>
+                    <h3 style={{marginBottom:'10px',color:'#8e8e8e',fontSize:'14px'}}>نتائج البحث</h3>
                     {searchResults.map(u => (
                         <div key={u.id} className="user-card">
-                            <img
-                                src={u.profile_picture || '/default-avatar.png'}
-                                alt={u.full_name}
-                                className="avatar"
-                            />
+                            <div className="user-avatar">{firstLetter(u.full_name)}</div>
                             <div className="user-info">
-                                <h4>{u.full_name}</h4>
+                                <strong>{u.full_name}</strong>
                                 <span>@{u.username}</span>
                             </div>
                             {u.id !== user.id && (
                                 <button
                                     onClick={() => sendRequest(u.id)}
                                     disabled={u.request_sent}
+                                    style={{opacity: u.request_sent ? 0.6 : 1}}
                                 >
-                                    {u.request_sent ? 'تم الإرسال' : 'إضافة صديق'}
+                                    {u.request_sent ? '✓ تم الإرسال' : '+ إضافة'}
                                 </button>
                             )}
                         </div>
                     ))}
                 </div>
-            </div>
-
-            {/* طلبات الصداقة */}
-            {requests.length > 0 && (
-                <div className="requests-section">
-                    <h3>طلبات الصداقة ({requests.length})</h3>
-                    {requests.map(req => (
-                        <div key={req.id} className="user-card">
-                            <img
-                                src={req.profile_picture || '/default-avatar.png'}
-                                alt={req.full_name}
-                                className="avatar"
-                            />
-                            <div className="user-info">
-                                <h4>{req.full_name}</h4>
-                                <span>@{req.username}</span>
-                            </div>
-                            <button onClick={() => acceptRequest(req.friendship_id)}>
-                                قبول
-                            </button>
-                        </div>
-                    ))}
-                </div>
             )}
 
-            {/* قائمة الأصدقاء */}
-            <div className="friends-list">
-                <h3>أصدقائي ({friends.length})</h3>
-                {friends.length === 0 ? (
+            <h3 style={{marginBottom:'10px',color:'#8e8e8e',fontSize:'14px'}}>
+                أصدقائي ({friends.length})
+            </h3>
+            {friends.length === 0 ? (
+                <div style={{textAlign:'center',padding:'40px',color:'#8e8e8e'}}>
+                    <div style={{fontSize:'48px',marginBottom:'10px'}}>👥</div>
                     <p>لا يوجد أصدقاء بعد</p>
-                ) : (
-                    friends.map(friend => (
-                        <div key={friend.id} className="user-card">
-                            <img
-                                src={friend.profile_picture || '/default-avatar.png'}
-                                alt={friend.full_name}
-                                className="avatar"
-                            />
-                            <div className="user-info">
-                                <h4>{friend.full_name}</h4>
-                                <span>@{friend.username}</span>
-                            </div>
-                            <a href={`/profile/${friend.id}`}>
-                                <button>عرض الملف</button>
-                            </a>
+                    <p style={{fontSize:'13px'}}>ابحث عن أصدقاء وأضفهم!</p>
+                </div>
+            ) : (
+                friends.map(friend => (
+                    <div key={friend.id} className="user-card">
+                        <div className="user-avatar">{firstLetter(friend.full_name)}</div>
+                        <div className="user-info">
+                            <strong>{friend.full_name}</strong>
+                            <span>@{friend.username}</span>
                         </div>
-                    ))
-                )}
-            </div>
+                        <a href={`/profile/${friend.id}`}>
+                            <button>عرض الملف</button>
+                        </a>
+                    </div>
+                ))
+            )}
         </div>
     );
 }
