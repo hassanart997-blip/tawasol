@@ -19,11 +19,28 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json());
 
+// حذف الستوريات المنتهية كل 24 ساعة
+setInterval(async () => {
+  try {
+    await pool.query('DELETE FROM stories WHERE expires_at < NOW()');
+    console.log('تم حذف الستوريات المنتهية');
+  } catch(e) {
+    console.error(e);
+  }
+}, 86400000);
+
 io.on('connection', (socket) => {
   console.log('user connected');
+
+  socket.on('join', (userId) => {
+    socket.join(userId);
+  });
+
   socket.on('sendMessage', (data) => {
+    io.to(data.receiverId).emit('receiveMessage', data);
     io.emit('receiveMessage', data);
   });
+
   socket.on('disconnect', () => {
     console.log('user disconnected');
   });
