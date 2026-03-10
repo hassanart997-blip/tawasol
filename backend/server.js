@@ -3,6 +3,8 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const multer = require('multer');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 
@@ -10,6 +12,13 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors({ origin: true, credentials: false }));
 app.use((req, res, next) => {
@@ -89,6 +98,13 @@ async function initDB() {
         is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS stories (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        image_url VARCHAR(255),
+        created_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '24 hours'
+      );
     `);
   } catch(e) {
     console.error('DB init error:', e.message);
@@ -97,6 +113,21 @@ async function initDB() {
 
 app.get('/', (req, res) => {
   res.json({ message: 'تواصل API يعمل!' });
+});
+
+app.post('/api/upload', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    const fileName = `${Date.now()}-${file.originalname}`;
+    const { data, error } = await supabase.storage
+      .from('images')
+      .upload(fileName, file.buffer, { contentType: file.mimetype });
+    if (error) throw error;
+    const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
+    res.json({ url: urlData.publicUrl });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/register', async (req, res) => {
@@ -133,10 +164,11 @@ app.get('/api/posts', auth, async (req, res) => {
     const result = await pool.query(`
       SELECT p.*, u.username, u.full_name, u.profile_picture,
       (SELECT COUNT(*) FROM likes WHERE post_id=p.id) as likes_count,
-      (SELECT COUNT(*) FROM comments WHERE post_id=p.id) as comments_count
+      (SELECT COUNT(*) FROM comments WHERE post_id=p.id) as comments_count,
+      EXISTS(SELECT 1 FROM likes WHERE post_id=p.id AND user_id=$1) as liked
       FROM posts p JOIN users u ON p.user_id=u.id
       ORDER BY p.created_at DESC LIMIT 20
-    `);
+    `, [req.user.id]);
     res.json(result.rows);
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -145,10 +177,10 @@ app.get('/api/posts', auth, async (req, res) => {
 
 app.post('/api/posts', auth, async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, image_url } = req.body;
     const result = await pool.query(
-      'INSERT INTO posts (user_id, content) VALUES ($1,$2) RETURNING *',
-      [req.user.id, content]
+      'INSERT INTO posts (user_id, content, image_url) VALUES ($1,$2,$3) RETURNING *',
+      [req.user.id, content, image_url || null]
     );
     res.json(result.rows[0]);
   } catch(e) {
@@ -161,10 +193,11 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
     const existing = await pool.query('SELECT * FROM likes WHERE user_id=$1 AND post_id=$2', [req.user.id, req.params.id]);
     if (existing.rows[0]) {
       await pool.query('DELETE FROM likes WHERE user_id=$1 AND post_id=$2', [req.user.id, req.params.id]);
+      res.json({ liked: false });
     } else {
       await pool.query('INSERT INTO likes (user_id, post_id) VALUES ($1,$2)', [req.user.id, req.params.id]);
+      res.json({ liked: true });
     }
-    res.json({ success: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
@@ -173,7 +206,7 @@ app.post('/api/posts/:id/like', auth, async (req, res) => {
 app.get('/api/posts/:id/comments', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT c.*, u.username FROM comments c JOIN users u ON c.user_id=u.id WHERE c.post_id=$1',
+      'SELECT c.*, u.username, u.full_name FROM comments c JOIN users u ON c.user_id=u.id WHERE c.post_id=$1 ORDER BY c.created_at',
       [req.params.id]
     );
     res.json(result.rows);
@@ -238,10 +271,23 @@ app.get('/api/profile', auth, async (req, res) => {
   }
 });
 
+app.put('/api/profile', auth, async (req, res) => {
+  try {
+    const { full_name, bio, profile_picture } = req.body;
+    const result = await pool.query(
+      'UPDATE users SET full_name=$1, bio=$2, profile_picture=$3 WHERE id=$4 RETURNING id, username, email, full_name, bio, profile_picture',
+      [full_name, bio, profile_picture, req.user.id]
+    );
+    res.json(result.rows[0]);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/messages/:userId', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT m.*, u.username as sender_name FROM messages m 
+      `SELECT m.*, u.username as sender_name, u.full_name as sender_full_name FROM messages m 
       JOIN users u ON m.sender_id=u.id
       WHERE (m.sender_id=$1 AND m.receiver_id=$2) OR (m.sender_id=$2 AND m.receiver_id=$1)
       ORDER BY m.created_at`,
@@ -269,6 +315,32 @@ app.get('/api/notifications', auth, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM notifications WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
     res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/stories', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT s.*, u.username, u.full_name, u.profile_picture
+      FROM stories s JOIN users u ON s.user_id=u.id
+      WHERE s.expires_at > NOW()
+      ORDER BY s.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/stories', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'INSERT INTO stories (user_id, image_url) VALUES ($1,$2) RETURNING *',
+      [req.user.id, req.body.image_url]
+    );
+    res.json(result.rows[0]);
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
