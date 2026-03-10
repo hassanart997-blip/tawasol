@@ -1,35 +1,24 @@
-// src/components/Feed.js
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../api';
 
 function Feed({ user }) {
-  // ========================
-  // State
-  // ========================
   const [posts, setPosts] = useState([]);
   const [content, setContent] = useState('');
   const [image, setImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
-
   const [stories, setStories] = useState([]);
   const [showStoryModal, setShowStoryModal] = useState(false);
   const [activeStory, setActiveStory] = useState(null);
   const [storyReply, setStoryReply] = useState('');
-
   const [reels, setReels] = useState([]);
   const [explorePosts, setExplorePosts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-
   const fileRef = useRef();
 
-  // ========================
-  // Helpers
-  // ========================
   const firstLetter = name => name ? name.charAt(0).toUpperCase() : '؟';
   const timeAgo = date => {
     const diff = Math.floor((new Date() - new Date(date)) / 1000);
@@ -39,24 +28,15 @@ function Feed({ user }) {
     return `${Math.floor(diff/86400)} يوم`;
   };
 
-  // ========================
-  // Load Data
-  // ========================
   useEffect(() => {
-    loadPosts();
-    loadStories();
-    loadReels();
-    loadExplore();
-    loadNotifications();
+    loadPosts(); loadStories(); loadReels(); loadExplore(); loadNotifications();
   }, []);
 
   useEffect(() => {
     if(searchQuery.trim()==='') return setSearchResults([]);
     const timer = setTimeout(async () => {
-      try {
-        const res = await api.get(`/posts/search?q=${searchQuery}`);
-        setSearchResults(res.data);
-      } catch(e){ console.error(e); }
+      try { const res = await api.get(`/posts/search?q=${searchQuery}`); setSearchResults(res.data); }
+      catch(e){ console.error(e); }
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -67,9 +47,6 @@ function Feed({ user }) {
   const loadExplore = async () => { try { const res = await api.get('/posts/explore'); setExplorePosts(res.data); } catch(e){ console.error(e); } };
   const loadNotifications = async () => { try { const res = await api.get('/posts/notifications'); setNotifications(res.data); } catch(e){ console.error(e); } };
 
-  // ========================
-  // Upload File
-  // ========================
   const uploadFile = async file => {
     const formData = new FormData();
     formData.append('file', file);
@@ -83,9 +60,6 @@ function Feed({ user }) {
     setImage(file); setImagePreview(URL.createObjectURL(file));
   };
 
-  // ========================
-  // Add Post
-  // ========================
   const addPost = async () => {
     if(!content.trim() && !image) return;
     setLoading(true);
@@ -99,14 +73,7 @@ function Feed({ user }) {
     setLoading(false);
   };
 
-  // ========================
-  // Like Post
-  // ========================
   const likePost = async postId => { try { await api.post(`/posts/${postId}/like`); loadPosts(); } catch(e){ console.error(e); } };
-
-  // ========================
-  // Story Modal
-  // ========================
   const viewStory = story => { setActiveStory(story); setShowStoryModal(true); };
   const replyStory = async () => {
     if(!storyReply.trim()) return;
@@ -114,13 +81,9 @@ function Feed({ user }) {
     catch(e){ console.error(e); }
   };
 
-  // ========================
-  // Render Components
-  // ========================
   return (
     <div className="feed-container">
 
-      {/* Search */}
       <div className="search-bar">
         <input type="text" placeholder="🔍 ابحث عن مستخدمين..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} />
         {searchResults.length>0 && <div className="search-results">
@@ -136,7 +99,6 @@ function Feed({ user }) {
         </div>}
       </div>
 
-      {/* Notifications */}
       <div className="notifications">
         <button onClick={()=>setShowNotifications(!showNotifications)}>
           🔔 الإشعارات {notifications.length>0 && `(${notifications.length})`}
@@ -146,7 +108,6 @@ function Feed({ user }) {
         </div>}
       </div>
 
-      {/* Stories */}
       <div className="stories-container">
         <div className="story-item story-add"><div>+</div><span>قصتك</span></div>
         {stories.map(story=>(
@@ -157,7 +118,6 @@ function Feed({ user }) {
         ))}
       </div>
 
-      {/* Create Post */}
       <div className="create-post">
         <div className="create-post-header">
           <div className="create-post-avatar">{firstLetter(user?.full_name)}</div>
@@ -175,7 +135,6 @@ function Feed({ user }) {
         </div>
       </div>
 
-      {/* Posts */}
       {posts.map(post=>(
         <div className="post-card" key={post.id}>
           <div className="post-header">
@@ -190,15 +149,12 @@ function Feed({ user }) {
         </div>
       ))}
 
-      {/* Reels */}
       <h3>🎬 ريلز</h3>
       {reels.map(r=><div key={r.id}><video src={r.video_url} controls autoPlay muted/></div>)}
 
-      {/* Explore */}
       <h3>📸 استكشاف</h3>
       <div className="explore-grid">{explorePosts.map(p=><img key={p.id} src={p.image_url} alt="Explore"/>)}</div>
 
-      {/* Story Modal */}
       {showStoryModal && activeStory && (
         <div className="story-modal" onClick={()=>setShowStoryModal(false)}>
           <img src={activeStory.image_url} alt="Story" />
