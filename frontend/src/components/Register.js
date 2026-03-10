@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-function Register({ api }) {
+function Register() {
     const [formData, setFormData] = useState({
         username: '',
         email: '',
@@ -21,12 +21,18 @@ function Register({ api }) {
         setError('');
 
         try {
-            const response = await api.post('/register', formData);
-            localStorage.setItem('token', response.data.token);
+            const response = await fetch('https://tawasol-eta.vercel.app/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error);
+            localStorage.setItem('token', data.token);
             setSuccess('تم إنشاء الحساب بنجاح!');
             window.location.href = '/feed';
         } catch (error) {
-            setError(error.response?.data?.error || 'حدث خطأ');
+            setError(error.message || 'حدث خطأ');
         } finally {
             setLoading(false);
         }
