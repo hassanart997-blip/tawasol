@@ -28,12 +28,13 @@ const upload = multer({
 });
 
 // ==================== CORS FLEXIBLE CONFIGURATION ====================
-// قائمة الأصول المسموح بها (تم تحديث رابط Netlify)
+// قائمة الأصول المسموح بها (يمكنك إضافة نطاق Netlify هنا)
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://zingy-muffin-8746a3.netlify.app', // الرابط الصحيح لـ Netlify
-  // يمكنك إضافة أي نطاقات أخرى هنا
+  'https://zingy-muffin-8746a3.netlify.app',
+  'https://tawasol-frontend-ten.vercel.app',
+  // أضف أي نطاق آخر هنا
 ];
 
 app.use(cors({
