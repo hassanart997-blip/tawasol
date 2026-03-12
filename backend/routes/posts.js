@@ -64,6 +64,33 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
+// حذف منشور
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const post = await pool.query('SELECT * FROM posts WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!post.rows[0]) return res.status(403).json({ error: 'غير مصرح' });
+    await pool.query('DELETE FROM posts WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// تعديل منشور
+router.put('/:id', auth, async (req, res) => {
+  try {
+    const post = await pool.query('SELECT * FROM posts WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+    if (!post.rows[0]) return res.status(403).json({ error: 'غير مصرح' });
+    const result = await pool.query(
+      'UPDATE posts SET content=$1 WHERE id=$2 RETURNING *',
+      [req.body.content, req.params.id]
+    );
+    res.json(result.rows[0]);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // إعجاب
 router.post('/:id/like', auth, async (req, res) => {
   try {
