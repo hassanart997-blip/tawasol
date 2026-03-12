@@ -36,11 +36,15 @@ router.get('/search', auth, async (req, res) => {
   }
 });
 
-// الملف الشخصي
+// الملف الشخصي للمستخدم الحالي
 router.get('/profile', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, username, email, full_name, bio, profile_picture FROM users WHERE id=$1',
+      `SELECT u.id, u.username, u.email, u.full_name, u.bio, u.profile_picture,
+      (SELECT COUNT(*) FROM follows WHERE follower_id=u.id) as following_count,
+      (SELECT COUNT(*) FROM follows WHERE following_id=u.id) as followers_count,
+      (SELECT COUNT(*) FROM posts WHERE user_id=u.id) as posts_count
+      FROM users u WHERE u.id=$1`,
       [req.user.id]
     );
     res.json(result.rows[0]);
@@ -63,47 +67,6 @@ router.put('/profile', auth, async (req, res) => {
   }
 });
 
-// مستخدم محدد
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const result = await pool.query(
-      'SELECT id, username, full_name, bio, profile_picture FROM users WHERE id=$1',
-      [req.params.id]
-    );
-    res.json(result.rows[0]);
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// الأصدقاء
-router.get('/friends', auth, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT u.* FROM users u JOIN friendships f ON 
-      (f.friend_id=u.id AND f.user_id=$1) OR (f.user_id=u.id AND f.friend_id=$1)
-      WHERE f.status='accepted'`,
-      [req.user.id]
-    );
-    res.json(result.rows);
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// طلب صداقة
-router.post('/friends/request', auth, async (req, res) => {
-  try {
-    await pool.query(
-      'INSERT INTO friendships (user_id, friend_id) VALUES ($1,$2)',
-      [req.user.id, req.body.friend_id]
-    );
-    res.json({ success: true });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
 // إشعارات
 router.get('/notifications', auth, async (req, res) => {
   try {
@@ -112,6 +75,87 @@ router.get('/notifications', auth, async (req, res) => {
       [req.user.id]
     );
     res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// الأصدقاء (المتابَعون)
+router.get('/friends', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.full_name, u.profile_picture FROM users u
+      JOIN follows f ON f.following_id=u.id WHERE f.follower_id=$1`,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// متابعة / إلغاء متابعة
+router.post('/:id/follow', auth, async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    if(parseInt(targetId) === req.user.id) return res.status(400).json({ error: 'لا يمكن متابعة نفسك' });
+    const existing = await pool.query(
+      'SELECT * FROM follows WHERE follower_id=$1 AND following_id=$2',
+      [req.user.id, targetId]
+    );
+    if(existing.rows[0]) {
+      await pool.query('DELETE FROM follows WHERE follower_id=$1 AND following_id=$2', [req.user.id, targetId]);
+      res.json({ following: false });
+    } else {
+      await pool.query('INSERT INTO follows (follower_id, following_id) VALUES ($1,$2)', [req.user.id, targetId]);
+      res.json({ following: true });
+    }
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// قائمة المتابعين (من يتابع هذا الشخص)
+router.get('/:id/followers', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.full_name, u.profile_picture FROM users u
+      JOIN follows f ON f.follower_id=u.id WHERE f.following_id=$1`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// قائمة المتابَعين (من يتابعه هذا الشخص)
+router.get('/:id/following', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.full_name, u.profile_picture FROM users u
+      JOIN follows f ON f.following_id=u.id WHERE f.follower_id=$1`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// مستخدم محدد مع عدد المتابعين
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.username, u.full_name, u.bio, u.profile_picture,
+      (SELECT COUNT(*) FROM follows WHERE follower_id=u.id) as following_count,
+      (SELECT COUNT(*) FROM follows WHERE following_id=u.id) as followers_count,
+      (SELECT COUNT(*) FROM posts WHERE user_id=u.id) as posts_count,
+      EXISTS(SELECT 1 FROM follows WHERE follower_id=$2 AND following_id=u.id) as is_following
+      FROM users u WHERE u.id=$1`,
+      [req.params.id, req.user.id]
+    );
+    res.json(result.rows[0]);
   } catch(e) {
     res.status(500).json({ error: e.message });
   }
