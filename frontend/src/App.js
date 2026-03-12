@@ -7,6 +7,7 @@ import Register from './components/Register';
 import Profile from './components/Profile';
 import Chat from './components/Chat';
 import Friends from './components/Friends';
+import Notifications from './components/Notifications';
 
 const AppContext = createContext();
 export function useApp() { return useContext(AppContext); }
@@ -68,9 +69,10 @@ const UserIcon = ({filled}) => (
   </svg>
 );
 
-const MoreIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="#000">
-    <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+const BellIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2">
+    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+    <path d="M13.73 21a2 2 0 01-3.46 0"/>
   </svg>
 );
 
@@ -102,7 +104,6 @@ function Feed() {
     api.get('/posts').then(r => setPosts(r.data)).catch(console.error);
   }, []);
 
-  // إغلاق القائمة عند الضغط خارجها
   useEffect(() => {
     const close = () => setMenuOpen(null);
     document.addEventListener('click', close);
@@ -195,42 +196,27 @@ function Feed() {
         {posts.map(post => (
           <div key={post.id} className="post-card">
             <div className="post-header">
-              <div className="post-avatar">
-                <div className="post-avatar-inner">{firstLetter(post.full_name)}</div>
-              </div>
-              <div className="post-user-info">
-                <div className="post-username">{post.username}</div>
-                <div className="post-time">{timeAgo(post.created_at)}</div>
-              </div>
+              <a href={`/profile/${post.user_id}`} style={{display:'flex',alignItems:'center',gap:'10px',textDecoration:'none',color:'inherit',flex:1}}>
+                <div className="post-avatar">
+                  <div className="post-avatar-inner">{post.full_name ? post.full_name.charAt(0).toUpperCase() : '؟'}</div>
+                </div>
+                <div className="post-user-info">
+                  <div className="post-username">{post.username}</div>
+                  <div className="post-time">{timeAgo(post.created_at)}</div>
+                </div>
+              </a>
 
-              {/* زر الثلاث نقاط - يظهر فقط لصاحب المنشور */}
               {post.user_id === user?.id && (
                 <div style={{position:'relative'}}>
-                  <button
-                    className="post-more"
-                    onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen===post.id ? null : post.id); }}
-                  >
-                    <MoreIcon/>
+                  <button className="post-more" onClick={e=>{e.stopPropagation();setMenuOpen(menuOpen===post.id?null:post.id);}}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#000">
+                      <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+                    </svg>
                   </button>
                   {menuOpen === post.id && (
-                    <div style={{
-                      position:'absolute',right:0,top:'30px',
-                      background:'#fff',borderRadius:'12px',
-                      boxShadow:'0 4px 20px rgba(0,0,0,0.15)',
-                      zIndex:100,minWidth:'140px',overflow:'hidden'
-                    }}>
-                      <button
-                        onClick={e => { e.stopPropagation(); startEdit(post); }}
-                        style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#262626'}}
-                      >
-                        ✏️ تعديل
-                      </button>
-                      <button
-                        onClick={e => { e.stopPropagation(); deletePost(post.id); }}
-                        style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#ed4956'}}
-                      >
-                        🗑️ حذف
-                      </button>
+                    <div style={{position:'absolute',right:0,top:'30px',background:'#fff',borderRadius:'12px',boxShadow:'0 4px 20px rgba(0,0,0,0.15)',zIndex:100,minWidth:'140px',overflow:'hidden'}}>
+                      <button onClick={e=>{e.stopPropagation();startEdit(post);}} style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#262626'}}>✏️ تعديل</button>
+                      <button onClick={e=>{e.stopPropagation();deletePost(post.id);}} style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#ed4956'}}>🗑️ حذف</button>
                     </div>
                   )}
                 </div>
@@ -241,26 +227,17 @@ function Feed() {
             {post.video_url && <video src={post.video_url} controls className="post-video" />}
 
             <div className="post-actions">
-              <button className={post.liked?'liked':''} onClick={()=>likePost(post.id)}>
-                <HeartIcon filled={post.liked}/>
-              </button>
+              <button className={post.liked?'liked':''} onClick={()=>likePost(post.id)}><HeartIcon filled={post.liked}/></button>
               <button><CommentIcon/></button>
               <button><ShareIcon/></button>
-              <button className="save-btn" onClick={()=>toggleSave(post.id)}>
-                <BookmarkIcon filled={saved[post.id]}/>
-              </button>
+              <button className="save-btn" onClick={()=>toggleSave(post.id)}><BookmarkIcon filled={saved[post.id]}/></button>
             </div>
 
             {Number(post.likes_count)>0 && <div className="post-likes">{post.likes_count} إعجاب</div>}
 
-            {/* محتوى المنشور أو حقل التعديل */}
             {editPost === post.id ? (
               <div style={{padding:'0 12px 12px',display:'flex',gap:'8px'}}>
-                <input
-                  value={editContent}
-                  onChange={e=>setEditContent(e.target.value)}
-                  style={{flex:1,border:'1px solid #dbdbdb',borderRadius:'8px',padding:'8px',fontSize:'14px',direction:'rtl'}}
-                />
+                <input value={editContent} onChange={e=>setEditContent(e.target.value)} style={{flex:1,border:'1px solid #dbdbdb',borderRadius:'8px',padding:'8px',fontSize:'14px',direction:'rtl'}} />
                 <button onClick={()=>saveEdit(post.id)} style={{background:'#0095f6',color:'#fff',border:'none',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'13px'}}>حفظ</button>
                 <button onClick={()=>setEditPost(null)} style={{background:'#efefef',border:'none',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'13px'}}>إلغاء</button>
               </div>
@@ -289,6 +266,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -296,6 +275,17 @@ function App() {
       api.get('/profile').then(r => setUser(r.data)).catch(()=>localStorage.removeItem('token')).finally(()=>setLoading(false));
     } else setLoading(false);
   }, []);
+
+  // جلب عدد الإشعارات غير المقروءة كل دقيقة
+  useEffect(() => {
+    if(!user) return;
+    const fetchUnread = () => {
+      api.get('/notifications/unread').then(r => setUnreadCount(r.data.count)).catch(console.error);
+    };
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 60000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleLogin = async (email, password) => {
     try {
@@ -316,9 +306,20 @@ function App() {
             <nav>
               <strong>تواصل</strong>
               <div className="nav-icons">
-                <span style={{cursor:'pointer'}}>
-                  <HeartIcon/>
+                {/* جرس الإشعارات */}
+                <span style={{cursor:'pointer',position:'relative'}} onClick={()=>{setShowNotifications(true);setUnreadCount(0);}}>
+                  <BellIcon/>
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position:'absolute',top:'-4px',right:'-4px',
+                      background:'#ed4956',color:'#fff',
+                      borderRadius:'50%',width:'16px',height:'16px',
+                      fontSize:'10px',display:'flex',alignItems:'center',justifyContent:'center',
+                      fontWeight:'700'
+                    }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+                  )}
                 </span>
+                {/* تسجيل خروج */}
                 <span style={{cursor:'pointer'}} onClick={()=>{localStorage.removeItem('token');window.location.reload();}}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2">
                     <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -328,6 +329,9 @@ function App() {
                 </span>
               </div>
             </nav>
+
+            {showNotifications && <Notifications onClose={()=>setShowNotifications(false)} />}
+
             <Routes>
               <Route path="/feed" element={<Feed />} />
               <Route path="/profile/:userId" element={<Profile />} />
