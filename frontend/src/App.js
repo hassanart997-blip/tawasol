@@ -69,8 +69,8 @@ const UserIcon = ({filled}) => (
 );
 
 const MoreIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="#000">
-    <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="#000">
+    <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
   </svg>
 );
 
@@ -84,6 +84,9 @@ function Feed() {
   const [showModal, setShowModal] = useState(false);
   const [saved, setSaved] = useState({});
   const [activeTab, setActiveTab] = useState('home');
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [editPost, setEditPost] = useState(null);
+  const [editContent, setEditContent] = useState('');
   const fileRef = useRef();
 
   const firstLetter = name => name ? name.charAt(0).toUpperCase() : '؟';
@@ -97,6 +100,13 @@ function Feed() {
 
   useEffect(() => {
     api.get('/posts').then(r => setPosts(r.data)).catch(console.error);
+  }, []);
+
+  // إغلاق القائمة عند الضغط خارجها
+  useEffect(() => {
+    const close = () => setMenuOpen(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
   }, []);
 
   const handleMedia = e => {
@@ -128,6 +138,29 @@ function Feed() {
     try {
       const res = await api.post(`/posts/${id}/like`);
       setPosts(prev => prev.map(p => p.id===id ? {...p, liked: res.data.liked, likes_count: Number(p.likes_count) + (res.data.liked?1:-1)} : p));
+    } catch(e){ console.error(e); }
+  };
+
+  const deletePost = async id => {
+    if(!window.confirm('هل تريد حذف المنشور؟')) return;
+    try {
+      await api.delete(`/posts/${id}`);
+      setPosts(prev => prev.filter(p => p.id !== id));
+    } catch(e){ console.error(e); }
+    setMenuOpen(null);
+  };
+
+  const startEdit = post => {
+    setEditPost(post.id);
+    setEditContent(post.content || '');
+    setMenuOpen(null);
+  };
+
+  const saveEdit = async id => {
+    try {
+      const res = await api.put(`/posts/${id}`, { content: editContent });
+      setPosts(prev => prev.map(p => p.id===id ? {...p, content: res.data.content} : p));
+      setEditPost(null);
     } catch(e){ console.error(e); }
   };
 
@@ -169,10 +202,44 @@ function Feed() {
                 <div className="post-username">{post.username}</div>
                 <div className="post-time">{timeAgo(post.created_at)}</div>
               </div>
-              <button className="post-more"><MoreIcon/></button>
+
+              {/* زر الثلاث نقاط - يظهر فقط لصاحب المنشور */}
+              {post.user_id === user?.id && (
+                <div style={{position:'relative'}}>
+                  <button
+                    className="post-more"
+                    onClick={e => { e.stopPropagation(); setMenuOpen(menuOpen===post.id ? null : post.id); }}
+                  >
+                    <MoreIcon/>
+                  </button>
+                  {menuOpen === post.id && (
+                    <div style={{
+                      position:'absolute',right:0,top:'30px',
+                      background:'#fff',borderRadius:'12px',
+                      boxShadow:'0 4px 20px rgba(0,0,0,0.15)',
+                      zIndex:100,minWidth:'140px',overflow:'hidden'
+                    }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); startEdit(post); }}
+                        style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#262626'}}
+                      >
+                        ✏️ تعديل
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); deletePost(post.id); }}
+                        style={{display:'block',width:'100%',padding:'12px 16px',border:'none',background:'none',textAlign:'right',cursor:'pointer',fontSize:'14px',color:'#ed4956'}}
+                      >
+                        🗑️ حذف
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
             {post.image_url && <img src={post.image_url} alt="post" className="post-image" />}
             {post.video_url && <video src={post.video_url} controls className="post-video" />}
+
             <div className="post-actions">
               <button className={post.liked?'liked':''} onClick={()=>likePost(post.id)}>
                 <HeartIcon filled={post.liked}/>
@@ -183,8 +250,24 @@ function Feed() {
                 <BookmarkIcon filled={saved[post.id]}/>
               </button>
             </div>
+
             {Number(post.likes_count)>0 && <div className="post-likes">{post.likes_count} إعجاب</div>}
-            {post.content && <div className="post-caption"><strong>{post.username}</strong> {post.content}</div>}
+
+            {/* محتوى المنشور أو حقل التعديل */}
+            {editPost === post.id ? (
+              <div style={{padding:'0 12px 12px',display:'flex',gap:'8px'}}>
+                <input
+                  value={editContent}
+                  onChange={e=>setEditContent(e.target.value)}
+                  style={{flex:1,border:'1px solid #dbdbdb',borderRadius:'8px',padding:'8px',fontSize:'14px',direction:'rtl'}}
+                />
+                <button onClick={()=>saveEdit(post.id)} style={{background:'#0095f6',color:'#fff',border:'none',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'13px'}}>حفظ</button>
+                <button onClick={()=>setEditPost(null)} style={{background:'#efefef',border:'none',borderRadius:'8px',padding:'8px 12px',cursor:'pointer',fontSize:'13px'}}>إلغاء</button>
+              </div>
+            ) : (
+              post.content && <div className="post-caption"><strong>{post.username}</strong> {post.content}</div>
+            )}
+
             <div className="post-comment-hint">أضف تعليقاً...</div>
           </div>
         ))}
