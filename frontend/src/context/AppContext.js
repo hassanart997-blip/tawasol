@@ -1,10 +1,18 @@
-import React, { createContext, useContext, useState, useRef, useEffect } from 'react';
+// src/context/AppContext.jsx
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import api from '../api';
 import io from 'socket.io-client';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const AppContext = createContext();
 
-export function AppProvider({ children, user }) {
+export function AppProvider({ children }) {
+  // ===== الحالة الأساسية =====
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [posts, setPosts] = useState([]);
   const [stories, setStories] = useState([]);
   const [reels, setReels] = useState([]);
@@ -14,89 +22,240 @@ export function AppProvider({ children, user }) {
   const [searchResults, setSearchResults] = useState([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [settings, setSettings] = useState(() => {
+    const saved = localStorage.getItem('settings');
+    return saved ? JSON.parse(saved) : { language: 'ar', notifications: true, sound: true };
+  });
+
   const socketRef = useRef(null);
   const fileRef = useRef();
 
+  // ===== تحميل المستخدم عند mount بدون loop =====
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    api.get('/profile')
+      .then(res => {
+        setUser(res.data);
+        localStorage.setItem('user', JSON.stringify(res.data));
+      })
+      .catch(() => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      })
+      .finally(() => setLoading(false));
+  }, []); // ❌ empty array لتجنب loop
+
+  // ===== حفظ theme و settings =====
+  useEffect(() => {
+    localStorage.setItem('theme', theme);
+    localStorage.setItem('settings', JSON.stringify(settings));
+  }, [theme, settings]);
+
+  // ===== WebSocket مع إعادة الاتصال =====
   useEffect(() => {
     if (!user) return;
-    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000');
+
+    const socket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
     socketRef.current = socket;
     socket.emit('join', user.id);
-    socket.on('receiveMessage', msg => alert(`رسالة جديدة من ${msg.senderId}`));
-    socket.on('newLike', data => alert(`${data.user} أعجب بمنشورك!`));
-    socket.on('newPost', post => setPosts(prev => [post, ...prev]));
-    return () => socket.disconnect();
-  }, [user]);
 
-  const loadMorePosts = async () => {
-    if (!hasMore) return;
+    socket.on('receiveMessage', (msg) => {
+      if (settings.notifications) toast.info(`رسالة جديدة من ${msg.senderName}`, { autoClose: 3000 });
+    });
+
+    socket.on('newLike', (data) => {
+      if (settings.notifications) toast.success(`${data.user} أعجب بمنشورك!`, { autoClose: 3000 });
+    });
+
+    socket.on('newPost', (post) => {
+      setPosts(prev => [post, ...prev]);
+      if (settings.notifications && post.user_id !== user.id) toast.info(`منشور جديد من ${post.username}`, { autoClose: 3000 });
+    });
+
+    socket.on('newNotification', (notification) => {
+      setNotifications(prev => [notification, ...prev]);
+    });
+
+    return () => socket.disconnect();
+  }, [user, settings.notifications]);
+
+  // ===== تحميل المنشورات مع pagination =====
+  const loadMorePosts = useCallback(async () => {
+    if (!hasMore || !user) return;
     try {
       const res = await api.get(`/posts?page=${page}`);
       if (res.data.length === 0) setHasMore(false);
       else setPosts(prev => [...prev, ...res.data]);
-    } catch (e) { console.error(e); }
-  };
+    } catch (e) {
+      console.error('خطأ في تحميل المنشورات:', e);
+    }
+  }, [page, hasMore, user]);
 
-  useEffect(() => { loadMorePosts(); }, [page]);
+  useEffect(() => {
+    if (user) loadMorePosts();
+  }, [page, user, loadMorePosts]);
 
-  const uploadFile = async file => {
+  // ===== رفع ملف =====
+  const uploadFile = useCallback(async (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await api.post('/posts/upload', formData, { headers: { 'Content-Type':'multipart/form-data' } });
+    const res = await api.post('/posts/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return res.data.url;
-  };
+  }, []);
 
-  const addPost = async ({ content, image, video }) => {
+  // ===== إضافة منشور =====
+  const addPost = useCallback(async ({ content, image, video }) => {
     if (!content?.trim() && !image && !video) return null;
     try {
-      let image_url = null, video_url = null;
-      if (image) image_url = await uploadFile(image);
-      if (video) video_url = await uploadFile(video);
+      let image_url = image ? await uploadFile(image) : null;
+      let video_url = video ? await uploadFile(video) : null;
       const res = await api.post('/posts', { content, image_url, video_url });
       setPosts(prev => [res.data, ...prev]);
       socketRef.current?.emit('newPost', res.data);
+      toast.success('تم نشر المنشور بنجاح');
       return res.data;
-    } catch (e) { console.error(e); return null; }
-  };
+    } catch (e) {
+      console.error('خطأ في إضافة المنشور:', e);
+      toast.error('فشل نشر المنشور');
+      return null;
+    }
+  }, [uploadFile]);
 
-  const likePost = async (postId) => {
+  // ===== إعجاب =====
+  const likePost = useCallback(async (postId) => {
     try {
       const res = await api.post(`/posts/${postId}/like`);
-      loadMorePosts();
-      if (res.data.liked) socketRef.current?.emit('newLike', { user: user.full_name, postId });
-    } catch (e) { console.error(e); }
-  };
+      setPosts(prev => prev.map(p =>
+        p.id === postId
+          ? { ...p, liked: res.data.liked, likes_count: (p.likes_count || 0) + (res.data.liked ? 1 : -1) }
+          : p
+      ));
+    } catch (e) { console.error('خطأ في الإعجاب:', e); }
+  }, []);
 
+  // ===== البحث مع debounce =====
   useEffect(() => {
-    if (!searchQuery.trim()) return setSearchResults([]);
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
     const timer = setTimeout(async () => {
       try {
-        const res = await api.get(`/posts/search?q=${searchQuery}`);
+        const res = await api.get(`/search?q=${searchQuery}`);
         setSearchResults(res.data);
-      } catch(e){ console.error(e); }
+      } catch (e) { console.error('خطأ في البحث:', e); }
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // ===== تسجيل الدخول =====
+  const login = useCallback(async (email, password) => {
+    try {
+      const res = await api.post('/auth/login', { email, password });
+      localStorage.setItem('token', res.data.token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      setUser(res.data.user);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      toast.success('تم تسجيل الدخول بنجاح');
+      return { success: true };
+    } catch (e) {
+      const msg = e.response?.data?.message || 'فشل تسجيل الدخول';
+      toast.error(msg);
+      return { success: false, error: msg };
+    }
+  }, []);
+
+  // ===== تسجيل الخروج =====
+  const logout = useCallback(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setPosts([]);
+    setStories([]);
+    setReels([]);
+    setExplorePosts([]);
+    setNotifications([]);
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    toast.info('تم تسجيل الخروج');
+  }, []);
+
+  // ===== تبديل theme =====
+  const toggleTheme = useCallback(() => setTheme(prev => (prev === 'light' ? 'dark' : 'light')), []);
+
+  // ===== تحديث الإعدادات =====
+  const updateSettings = useCallback((newSettings) => {
+    setSettings(prev => ({ ...prev, ...newSettings }));
+  }, []);
+
   return (
-    <AppContext.Provider value={{
-      api, user,
-      posts, setPosts,
-      stories, setStories,
-      reels, setReels,
-      explorePosts, setExplorePosts,
-      notifications, setNotifications,
-      searchQuery, setSearchQuery,
-      searchResults,
-      fileRef, socketRef,
-      page, setPage, hasMore,
-      addPost, likePost, loadMorePosts
-    }}>
+    <AppContext.Provider
+      value={{
+        user,
+        posts,
+        stories,
+        reels,
+        explorePosts,
+        notifications,
+        searchQuery,
+        searchResults,
+        page,
+        hasMore,
+        loading,
+        theme,
+        settings,
+        fileRef,
+        socketRef,
+        setPosts,
+        setStories,
+        setReels,
+        setExplorePosts,
+        setSearchQuery,
+        setPage,
+        setHasMore,
+        loadMorePosts,
+        addPost,
+        likePost,
+        uploadFile,
+        login,
+        logout,
+        toggleTheme,
+        updateSettings,
+      }}
+    >
       {children}
+      <ToastContainer
+        position="top-left"
+        autoClose={4000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme={theme === 'dark' ? 'dark' : 'light'}
+      />
     </AppContext.Provider>
   );
 }
 
 export function useApp() {
-  return useContext(AppContext);
-      }
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useApp must be used within AppProvider');
+  return context;
+}
