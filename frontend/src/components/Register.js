@@ -1,19 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
 import api from '../api';
 
 function Register() {
-  const [formData, setFormData] = useState({
-    username: '', email: '', password: '', full_name: ''
-  });
+  const { login } = useApp();
+  const [formData, setFormData] = useState({ username: '', email: '', password: '', full_name: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  const handleChange = e => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  const handleChange = e => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const validateForm = () => {
     if (!formData.full_name.trim()) return 'الاسم الكامل مطلوب';
@@ -32,10 +30,13 @@ function Register() {
     try {
       const res = await api.post('/auth/register', formData);
       localStorage.setItem('token', res.data.token);
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      api.defaults.headers.common['Authorization'] = `Bearer ${res.data.token}`;
+      login(res.data.user);
       navigate('/feed');
-    } catch(e) {
-      if(!e.response) setError('مشكلة في الاتصال بالخادم');
-      else setError(e.response.data?.message || 'حدث خطأ');
+    } catch(err) {
+      if (!err.response) setError('مشكلة في الاتصال بالخادم');
+      else setError(err.response.data?.message || 'حدث خطأ');
     }
     setLoading(false);
   };
@@ -64,44 +65,12 @@ function Register() {
         </p>
         {error && <div className="error-message">{error}</div>}
         <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            name="full_name"
-            placeholder="الاسم الكامل"
-            value={formData.full_name}
-            onChange={handleChange}
-            required
-          />
-          <input
-            type="text"
-            name="username"
-            placeholder="اسم المستخدم"
-            value={formData.username}
-            onChange={handleChange}
-            required
-          />
-          <input
-            type="email"
-            name="email"
-            placeholder="البريد الإلكتروني"
-            value={formData.email}
-            onChange={handleChange}
-            required
-          />
+          <input type="text" name="full_name" placeholder="الاسم الكامل" value={formData.full_name} onChange={handleChange} required/>
+          <input type="text" name="username" placeholder="اسم المستخدم" value={formData.username} onChange={handleChange} required/>
+          <input type="email" name="email" placeholder="البريد الإلكتروني" value={formData.email} onChange={handleChange} required/>
           <div className="password-field">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              placeholder="كلمة المرور"
-              value={formData.password}
-              onChange={handleChange}
-              required
-            />
-            <button
-              type="button"
-              className="show-password-btn"
-              onClick={() => setShowPassword(!showPassword)}
-            >
+            <input type={showPassword ? 'text' : 'password'} name="password" placeholder="كلمة المرور" value={formData.password} onChange={handleChange} required/>
+            <button type="button" className="show-password-btn" onClick={() => setShowPassword(!showPassword)}>
               {showPassword ? <EyeOffIcon/> : <EyeIcon/>}
             </button>
           </div>
@@ -109,7 +78,7 @@ function Register() {
             {loading ? 'جاري التحميل...' : 'إنشاء حساب'}
           </button>
         </form>
-        <p>لديك حساب؟ <a href="/login">تسجيل الدخول</a></p>
+        <p>لديك حساب؟ <Link to="/login">تسجيل الدخول</Link></p>
       </div>
     </div>
   );
