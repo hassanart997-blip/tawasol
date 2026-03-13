@@ -1,20 +1,97 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useApp } from "../context/AppContext";
+import api from "../api";
 
-function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [showPass, setShowPass] = useState(false);
+function Login() {
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    const result = await onLogin(email, password);
-    if(!result.success) setError(result.error);
-    setLoading(false);
+  const { login } = useApp();
+  const navigate = useNavigate();
+
+  const [form,setForm] = useState({
+    email:"",
+    password:""
+  });
+
+  const [loading,setLoading] = useState(false);
+  const [error,setError] = useState("");
+  const [showPass,setShowPass] = useState(false);
+
+
+  const handleChange = (e)=>{
+
+    setForm({
+      ...form,
+      [e.target.name]:e.target.value
+    });
+
   };
+
+
+  const validateForm = ()=>{
+
+    if(!form.email.trim()){
+      return "يرجى إدخال البريد الإلكتروني";
+    }
+
+    if(!form.password.trim()){
+      return "يرجى إدخال كلمة المرور";
+    }
+
+    if(form.password.length < 6){
+      return "كلمة المرور قصيرة جداً";
+    }
+
+    return null;
+
+  };
+
+
+  const handleSubmit = async (e)=>{
+
+    e.preventDefault();
+
+    const validationError = validateForm();
+
+    if(validationError){
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try{
+
+      const res = await api.post("/auth/login",{
+        email:form.email,
+        password:form.password
+      });
+
+      const { token,user } = res.data;
+
+      localStorage.setItem("token",token);
+
+      login(user);
+
+      navigate("/feed");
+
+    }catch(err){
+
+      const msg =
+        err.response?.data?.message ||
+        "تعذر تسجيل الدخول حاول مرة أخرى";
+
+      setError(msg);
+
+    }finally{
+
+      setLoading(false);
+
+    }
+
+  };
+
 
   const EyeIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e8e8e" strokeWidth="2">
@@ -22,6 +99,7 @@ function Login({ onLogin }) {
       <circle cx="12" cy="12" r="3"/>
     </svg>
   );
+
 
   const EyeOffIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8e8e8e" strokeWidth="2">
@@ -31,40 +109,86 @@ function Login({ onLogin }) {
     </svg>
   );
 
+
   return (
+
     <div className="auth-container">
+
       <div className="auth-box">
+
         <h2>تواصل</h2>
-        <p style={{textAlign:'center',color:'#8e8e8e',fontSize:'14px',marginBottom:'16px'}}>سجل دخولك للمتابعة</p>
-        {error && <div className="error-message">{error}</div>}
+
+        <p className="auth-subtitle">
+          سجل دخولك للمتابعة
+        </p>
+
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
+
           <input
             type="email"
+            name="email"
             placeholder="البريد الإلكتروني"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
+            value={form.email}
+            onChange={handleChange}
+            autoComplete="email"
           />
+
           <div className="password-field">
+
             <input
-              type={showPass ? 'text' : 'password'}
+              type={showPass ? "text" : "password"}
+              name="password"
               placeholder="كلمة المرور"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
+              value={form.password}
+              onChange={handleChange}
+              autoComplete="current-password"
             />
-            <button type="button" className="show-password-btn" onClick={() => setShowPass(!showPass)}>
+
+            <button
+              type="button"
+              className="show-password-btn"
+              onClick={()=>setShowPass(!showPass)}
+            >
               {showPass ? <EyeOffIcon/> : <EyeIcon/>}
             </button>
+
           </div>
-          <button type="submit" disabled={loading}>
-            {loading ? 'جاري التحميل...' : 'تسجيل الدخول'}
+
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="login-btn"
+          >
+            {loading ? "جاري تسجيل الدخول..." : "تسجيل الدخول"}
           </button>
+
         </form>
-        <p>ليس لديك حساب؟ <a href="/register">إنشاء حساب</a></p>
+
+
+        <div className="auth-footer">
+
+          <p>
+            ليس لديك حساب؟
+            <Link to="/register">
+              إنشاء حساب
+            </Link>
+          </p>
+
+        </div>
+
       </div>
+
     </div>
+
   );
+
 }
 
 export default Login;
